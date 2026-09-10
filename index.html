@@ -1054,7 +1054,7 @@ const API = {
       // Oturum düştü: yöneticiyi sessizce çıkart.
       state.jeton = null;
       state.isAdmin = false;
-      try { sessionStorage.removeItem('berber_jeton'); } catch {}
+      try { localStorage.removeItem('berber_jeton'); } catch {}
     }
     if(!yanit.ok){
       throw new Error((veri && veri.hata) || 'İşlem tamamlanamadı.');
@@ -1522,8 +1522,9 @@ const Logic = {
       const veri = await API.post('/api/giris', { sifre });
       state.jeton = veri.jeton;
       state.isAdmin = true;
-      // Sekme kapanınca oturum düşer. localStorage kullanılmaz.
-      try { sessionStorage.setItem('berber_jeton', veri.jeton); } catch {}
+      // Oturum cihazda KALICI durur. Tarayıcı kapansa bile silinmez,
+      // yalnızca Çıkış Yap ile düşer. Eski sitedeki davranışın aynısı.
+      try { localStorage.setItem('berber_jeton', veri.jeton); } catch {}
       document.getElementById('adminPass').value = '';
       showToast('Yönetici girişi başarılı', 'success');
       UI.openAdminPanel();
@@ -1536,7 +1537,7 @@ const Logic = {
     state.jeton = null;
     state.isAdmin = false;
     state.randevular = [];
-    try { sessionStorage.removeItem('berber_jeton'); } catch {}
+    try { localStorage.removeItem('berber_jeton'); } catch {}
     UI.closeAdminPanel();
     UI.redrawCalendar();
     showToast('Çıkış yapıldı', 'success');
@@ -1871,10 +1872,11 @@ async function baslat(){
   UI.initCalendar();
   Turnstile.kur();
 
-  // Aynı sekmede daha önce giriş yapılmışsa oturumu geri al.
+  // Daha önce giriş yapılmışsa oturumu geri al. Tarayıcı kapanıp açılsa
+  // bile şifre tekrar sorulmaz; sadece Çıkış Yap ile düşer.
   // Jeton süreli ve imzalıdır; geçersizse ilk yönetici isteğinde düşer.
   try {
-    const kayitli = sessionStorage.getItem('berber_jeton');
+    const kayitli = localStorage.getItem('berber_jeton');
     if(kayitli){
       state.jeton = kayitli;
       state.isAdmin = true;
