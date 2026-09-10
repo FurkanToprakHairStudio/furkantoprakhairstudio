@@ -18,7 +18,7 @@ self.addEventListener('push', (olay) => {
   try { veri = olay.data ? olay.data.json() : {}; }
   catch { veri = {}; }
 
-  const baslik = veri.baslik || 'Yeni Randevu';
+  const baslik = veri.baslik || 'Randevu';
   const secenekler = {
     body: veri.govde || '',
     icon: 'simge-192.png',
