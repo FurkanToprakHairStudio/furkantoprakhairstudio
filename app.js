@@ -178,7 +178,7 @@ const UI = {
       onDayCreate(dObj, dStr, fp, dayElem){
         const g = fp.formatDate(dayElem.dateObj, 'Y-m-d');
         if(state.kapaliGunler.includes(g)) dayElem.classList.add('blocked-day');
-        if(state.isAdmin && state.randevular.some(r => r.tarih === g)) dayElem.classList.add('has-appt');
+        if(state.isAdmin && state.randevular.some(r => r.tarih === g && !r.iptal_mi)) dayElem.classList.add('has-appt');
       },
       onChange(secilenler, dateStr, instance){
         if(!secilenler.length) return;
@@ -496,7 +496,8 @@ const UI = {
   /** Randevuları sunucudan çeker. Yönetici uçları müşteri bilgilerini de döner. */
   async randevulariYukleVeCiz(analizIcin){
     try {
-      const veri = await API.get('/api/randevular');
+      // İptalliler de gelsin: "İptal Edilenler" sekmesi bunları gösteriyor
+      const veri = await API.get('/api/randevular?iptalli=1');
       state.randevular = veri.randevular || [];
       this.redrawCalendar();
     } catch (e) {
@@ -517,33 +518,60 @@ const UI = {
   renderAdminPanel(){
     const list = document.getElementById('adminApptList');
     const bugun = today();
-    // Zamanı geçen randevular listeden düşer; kaydı ve parası durur.
-    let liste = state.randevular.filter(r => !randevuGecti(r))
-      .sort((a, b) => a.tarih !== b.tarih ? (a.tarih < b.tarih ? -1 : 1) : (a.saat < b.saat ? -1 : 1));
-    if(state.adminFilter === 'today') liste = liste.filter(r => r.tarih === bugun);
-    if(state.adminFilter === 'upcoming') liste = liste.filter(r => r.tarih >= bugun);
+    const iptalliSekme = state.adminFilter === 'cancelled';
 
-    const aktif = state.randevular.filter(r => !randevuGecti(r)).length;
+    let liste;
+    if(iptalliSekme){
+      // İptal edilenler: tarihi geçmiş olsa bile gösterilir, çünkü
+      // geri alma ihtimali var ve kayıt hesap defterini etkiliyor.
+      liste = state.randevular.filter(r => r.iptal_mi)
+        .sort((a, b) => a.tarih !== b.tarih ? (a.tarih > b.tarih ? -1 : 1) : (a.saat > b.saat ? -1 : 1));
+    } else {
+      // Zamanı geçen randevular listeden düşer; kaydı ve parası durur.
+      liste = state.randevular.filter(r => !r.iptal_mi && !randevuGecti(r))
+        .sort((a, b) => a.tarih !== b.tarih ? (a.tarih < b.tarih ? -1 : 1) : (a.saat < b.saat ? -1 : 1));
+      if(state.adminFilter === 'today') liste = liste.filter(r => r.tarih === bugun);
+      if(state.adminFilter === 'upcoming') liste = liste.filter(r => r.tarih >= bugun);
+    }
+
+    const aktif = state.randevular.filter(r => !r.iptal_mi && !randevuGecti(r)).length;
+    const iptalliAdet = state.randevular.filter(r => r.iptal_mi).length;
     const alt = document.getElementById('adminSubtitle');
-    if(alt) alt.textContent = aktif + ' aktif randevu';
+    if(alt){
+      alt.textContent = iptalliSekme
+        ? iptalliAdet + ' iptal edilmiş randevu'
+        : aktif + ' aktif randevu';
+    }
+
+    const bosMesaj = iptalliSekme
+      ? 'İptal edilmiş randevu bulunmuyor.'
+      : 'Bu filtrede randevu bulunmuyor.';
 
     list.innerHTML = liste.length === 0
-      ? '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><p>Bu filtrede randevu bulunmuyor.</p></div>'
-      : liste.map(r =>
-          '<div class="appt-item"><div class="appt-meta"><div><div class="appt-name">' +
-          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>' +
-          escHtml(r.ad) + '</div><div class="appt-details">📅 ' + formatDateTR(r.tarih) +
-          ' — ⏰ ' + escHtml(r.saat) + '<br>💈 ' + escHtml(r.ustaAdi || barberName(r.usta)) +
-          '<br>✂️ ' + escHtml(r.hizmetler || '—') + '<br>📞 ' + escHtml(r.telefon) +
-          '</div></div><span class="badge ' + (r.tarih >= bugun ? 'badge-success' : 'badge-accent') + '">' +
-          (r.tarih >= bugun ? 'Aktif' : 'Geçmiş') + '</span></div>' +
-          '<button class="btn btn-danger btn-sm" onclick="Logic.cancelAppointment(\'' + escHtml(r.id) + '\')">İptal Et</button></div>'
-        ).join('');
+      ? '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><p>' + bosMesaj + '</p></div>'
+      : liste.map(r => {
+          const gecmis = r.tarih < bugun;
+          const rozet = r.iptal_mi
+            ? '<span class="badge badge-accent">İptal</span>'
+            : '<span class="badge ' + (gecmis ? 'badge-accent' : 'badge-success') + '">' +
+              (gecmis ? 'Geçmiş' : 'Aktif') + '</span>';
+          const dugme = r.iptal_mi
+            ? '<button class="btn btn-secondary btn-sm" onclick="Logic.restoreAppointment(&quot;' + escHtml(r.id) + '&quot;)">Geri Al</button>'
+            : '<button class="btn btn-danger btn-sm" onclick="Logic.cancelAppointment(&quot;' + escHtml(r.id) + '&quot;)">İptal Et</button>';
+          return '<div class="appt-item"><div class="appt-meta"><div><div class="appt-name">' +
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg>' +
+            escHtml(r.ad) + '</div><div class="appt-details">📅 ' + formatDateTR(r.tarih) +
+            ' — ⏰ ' + escHtml(r.saat) + '<br>💈 ' + escHtml(r.ustaAdi || barberName(r.usta)) +
+            '<br>✂️ ' + escHtml(r.hizmetler || '—') + '<br>📞 ' + escHtml(r.telefon) +
+            '</div></div>' + rozet + '</div>' + dugme + '</div>';
+        }).join('');
 
     const bd = document.getElementById('blockedDaysList');
-    bd.innerHTML = state.kapaliGunler.length
-      ? '🔒 Kapalı günler: ' + state.kapaliGunler.map(d => formatDateTR(d)).join(', ')
-      : 'Kapalı gün bulunmuyor.';
+    if(bd){
+      bd.innerHTML = state.kapaliGunler.length
+        ? '🔒 Kapalı günler: ' + state.kapaliGunler.map(d => formatDateTR(d)).join(', ')
+        : 'Kapalı gün bulunmuyor.';
+    }
   },
 
   // ===== MÜŞTERİ ANALİZİ =====
@@ -772,6 +800,20 @@ const Logic = {
     try {
       await API.sil('/api/randevu/' + encodeURIComponent(id));
       showToast('Randevu iptal edildi.', 'success');
+      await UI.randevulariYukleVeCiz();
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  },
+
+  /** İptal edilmiş randevuyu geri alır.
+   *  İptal edilince o saat boşa düştüğü için başkası almış olabilir;
+   *  o durumda sunucu reddeder ve sebebini açıkça söyler. */
+  async restoreAppointment(id){
+    if(!confirm('Bu randevuyu geri almak istediğine emin misin? Tutar hesaba geri eklenecek.')) return;
+    try {
+      await API.post('/api/randevu/' + encodeURIComponent(id) + '/geri-al', {});
+      showToast('Randevu geri alındı.', 'success');
       await UI.randevulariYukleVeCiz();
     } catch (e) {
       showToast(e.message, 'error');
