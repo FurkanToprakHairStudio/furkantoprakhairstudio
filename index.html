@@ -753,7 +753,10 @@
   <!-- ANA MENÜ: 3 büyük buton -->
   <div id="adminHome" class="admin-view">
     <div class="admin-fs-head">
-      <h2 class="admin-fs-title">Yönetim Paneli</h2>
+      <div>
+        <h2 class="admin-fs-title">Yönetim Paneli</h2>
+        <p class="admin-fs-sub" id="adminOzet">Yükleniyor…</p>
+      </div>
       <button class="modal-close" onclick="UI.closeAdminPanel()">✕</button>
     </div>
     <div class="admin-menu">
@@ -1346,9 +1349,29 @@ const UI = {
     if(el) el.style.display = '';
     const ov = document.getElementById('adminPanelOverlay'); if(ov) ov.scrollTop = 0;
 
-    if(gorunum === 'randevular') this.randevulariYukleVeCiz();
+    if(gorunum === 'home') this.ozetiYukle();
+    else if(gorunum === 'randevular') this.randevulariYukleVeCiz();
     else if(gorunum === 'hesap') Finance.render();
     else if(gorunum === 'analiz'){ this.analizSecim = null; this.randevulariYukleVeCiz(true); }
+  },
+
+  /** Panelin üstündeki kısa özet: toplam kayıt, yaklaşan, iptalli.
+   *  Tek hafif sorgu, sunucuda sayılıyor; bütün liste indirilmiyor. */
+  async ozetiYukle(){
+    const el = document.getElementById('adminOzet');
+    if(!el) return;
+    try {
+      const o = await API.get('/api/ozet');
+      const parcalar = [o.toplam + ' kayıt'];
+      if(o.yaklasan > 0) parcalar.push(o.yaklasan + ' yaklaşan');
+      if(o.iptalli > 0) parcalar.push(o.iptalli + ' iptalli');
+      if(o.ilkTarih && o.sonTarih){
+        parcalar.push(formatDateTR(o.ilkTarih) + ' - ' + formatDateTR(o.sonTarih));
+      }
+      el.textContent = parcalar.join('  ·  ');
+    } catch (e) {
+      el.textContent = '';
+    }
   },
 
   /** Randevuları sunucudan çeker. Yönetici uçları müşteri bilgilerini de döner. */
